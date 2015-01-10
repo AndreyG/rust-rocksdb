@@ -490,7 +490,7 @@ impl RocksDBVector {
 
 // RocksDBResult exists because of the inherent difference between
 // an operational failure and the absence of a possible result.
-#[deriving(Clone, PartialEq, PartialOrd, Eq, Ord, Show)]
+#[derive(Clone, PartialEq, PartialOrd, Eq, Ord, Show)]
 pub enum RocksDBResult<T,E> {
     Some(T),
     None,
