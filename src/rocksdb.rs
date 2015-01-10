@@ -74,10 +74,10 @@ impl RocksDBOptions {
 
     pub fn add_merge_operator<'a>( &self, name: &str,
         merge_fn: fn (&[u8], Option<&[u8]>, &mut MergeOperands) -> Vec<u8>) {
-        let cb = box MergeOperatorCallback {
+        let cb = Box::new(MergeOperatorCallback {
             name: name.to_c_str(),
             merge_fn: merge_fn,
-        };
+        });
 
         unsafe {
             let mo = rocksdb_ffi::rocksdb_mergeoperator_create(
