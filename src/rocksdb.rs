@@ -468,7 +468,7 @@ impl RocksDBVector {
             let val = Unique(val);
             RocksDBVector {
                 inner:
-                    CVec::new_with_dtor(val.0, val_len as uint,
+                    CVec::new_with_dtor(val.0, val_len as usize,
                         move |:| libc::free(val.0 as *mut libc::c_void))
             }
         }
@@ -578,8 +578,8 @@ fn external() {
 pub struct MergeOperands<'a> {
     operands_list: *const *const c_char,
     operands_list_len: *const size_t,
-    num_operands: uint,
-    cursor: uint,
+    num_operands: usize,
+    cursor: usize,
 }
 
 impl <'a> MergeOperands<'a> {
@@ -590,7 +590,7 @@ impl <'a> MergeOperands<'a> {
         MergeOperands {
             operands_list: operands_list,
             operands_list_len: operands_list_len,
-            num_operands: num_operands as uint,
+            num_operands: num_operands as usize,
             cursor: 0,
         }
     }
@@ -603,16 +603,16 @@ impl <'a> Iterator<&'a [u8]> for &'a mut MergeOperands<'a> {
             true => None,
             false => {
                 unsafe {
-                    let base = self.operands_list as uint;
-                    let base_len = self.operands_list_len as uint;
+                    let base = self.operands_list as usize;
+                    let base_len = self.operands_list_len as usize;
                     let spacing = mem::size_of::<*const *const u8>();
                     let spacing_len = mem::size_of::<*const size_t>();
                     let len_ptr = (base_len + (spacing_len * self.cursor))
                         as *const size_t;
-                    let len = *len_ptr as uint;
+                    let len = *len_ptr as usize;
                     let ptr = base + (spacing * self.cursor);
                     let op = from_buf_len(*(ptr as *const *const u8), len);
-                    let des: Option<uint> = from_str(op.as_slice());
+                    let des: Option<usize> = from_str(op.as_slice());
                     self.cursor += 1;
                     Some(mem::transmute(Slice{data:*(ptr as *const *const u8)
                         as *const u8, len: len}))
@@ -621,7 +621,7 @@ impl <'a> Iterator<&'a [u8]> for &'a mut MergeOperands<'a> {
         }
     }
 
-    fn size_hint(&self) -> (uint, Option<uint>) {
+    fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.num_operands - self.cursor;
         (remaining, Some(remaining))
     }
@@ -660,9 +660,9 @@ extern "C" fn full_merge_callback(
             &mut MergeOperands::new(operands_list,
                                     operands_list_len,
                                     num_operands);
-        let key = from_buf_len(key as *const u8, key_len as uint);
+        let key = from_buf_len(key as *const u8, key_len as usize);
         let oldval = from_buf_len(existing_value as *const u8,
-                                  existing_value_len as uint);
+                                  existing_value_len as usize);
         let mut result =
             (cb.merge_fn)(key.as_bytes(), Some(oldval.as_bytes()), operands);
         result.shrink_to_fit();
@@ -693,7 +693,7 @@ extern "C" fn partial_merge_callback(
         let operands = &mut MergeOperands::new(operands_list,
                                                operands_list_len,
                                                num_operands);
-        let key = from_buf_len(key as *const u8, key_len as uint);
+        let key = from_buf_len(key as *const u8, key_len as usize);
         let mut result = (cb.merge_fn)(key.as_bytes(), None, operands);
         result.shrink_to_fit();
         //TODO(tan) investigate zero-copy techniques to improve performance
