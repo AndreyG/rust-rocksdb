@@ -493,8 +493,9 @@ pub enum RocksDBResult<'a,T,E> {
 }
 
 impl <'a,T,E> RocksDBResult<'a,T,E> {
-    #[unstable = "waiting for unboxed closures"]
-    pub fn map<U>(self, f: |T| -> U) -> RocksDBResult<U,E> {
+    pub fn map<U, F>(self, f: F) -> RocksDBResult<U,E>
+        where F: FnOnce(T) -> U
+    {
         match self {
             RocksDBResult::Some(x) => RocksDBResult::Some(f(x)),
             RocksDBResult::None => RocksDBResult::None,
@@ -512,8 +513,9 @@ impl <'a,T,E> RocksDBResult<'a,T,E> {
         }
     }
 
-    #[unstable = "waiting for unboxed closures"]
-    pub fn on_error<U>(self, f: |E| -> U) -> RocksDBResult<T,U> {
+    pub fn on_error<U, F>(self, f: F) -> RocksDBResult<T,U>
+        where F: FnOnce(E) -> U
+    {
         match self {
             RocksDBResult::Some(x) => RocksDBResult::Some(x),
             RocksDBResult::None => RocksDBResult::None,
@@ -521,8 +523,9 @@ impl <'a,T,E> RocksDBResult<'a,T,E> {
         }
     }
 
-    #[unstable = "waiting for unboxed closures"]
-    pub fn on_absent(self, f: || -> ()) -> RocksDBResult<T,E> {
+    pub fn on_absent<F>(self, f: F) -> RocksDBResult<T,E>
+        where F: FnOnce()
+    {
         match self {
             RocksDBResult::Some(x) => RocksDBResult::Some(x),
             RocksDBResult::None => {
