@@ -16,13 +16,12 @@
 extern crate libc;
 use self::libc::{c_char, c_int, c_void, size_t};
 use std::io::{IoError};
-use std::c_vec::CVec;
-use std::c_str::CString;
+use std::ffi::{CString, c_str_to_bytes};
 use std::str::from_utf8;
-use std::string::raw::from_buf_len;
 use std::ptr;
 use std::mem;
 use std::ptr::Unique;
+use std::slice::{from_raw_buf, from_raw_mut_buf};
 
 use rocksdb_ffi;
 
@@ -75,7 +74,7 @@ impl RocksDBOptions {
     pub fn add_merge_operator<'a>( &self, name: &str,
         merge_fn: fn (&[u8], Option<&[u8]>, &mut MergeOperands) -> Vec<u8>) {
         let cb = Box::new(MergeOperatorCallback {
-            name: name.to_c_str(),
+            name: CString::from_slice(name.as_bytes()),
             merge_fn: merge_fn,
         });
 
@@ -278,6 +277,15 @@ pub struct RocksDB {
     inner: rocksdb_ffi::RocksDBInstance,
 }
 
+fn get_error_description(err: *mut i8) -> Option<String> {
+    unsafe {
+        match from_utf8(c_str_to_bytes(&(err as *const c_char))) {
+            Ok(error) => Some(error.to_string()),
+            _ => None
+        }
+    }
+}
+
 impl RocksDB {
     pub fn open_default(path: &str) -> Result<RocksDB, String> {
         let opts = RocksDBOptions::new();
@@ -287,7 +295,7 @@ impl RocksDB {
 
     pub fn open(opts: RocksDBOptions, path: &str) -> Result<RocksDB, String> {
         unsafe {
-            let cpath = path.to_c_str();
+            let cpath = CString::from_slice(path.as_bytes());
             let cpath_ptr = cpath.as_ptr();
 
             //TODO test path here, as if rocksdb fails it will just crash the
@@ -296,11 +304,10 @@ impl RocksDB {
             let err = 0 as *mut i8;
             let db = rocksdb_ffi::rocksdb_open(opts.inner, cpath_ptr, err);
             let rocksdb_ffi::RocksDBInstance(db_ptr) = db;
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return Err(error_string.to_string()),
+                        return Err(error_string),
                     None =>
                         return Err(
                             "Could not initialize database.".to_string()),
@@ -315,7 +322,7 @@ impl RocksDB {
 
     pub fn destroy(opts: RocksDBOptions, path: &str) -> Result<(), String> {
         unsafe {
-            let cpath = path.to_c_str();
+            let cpath = CString::from_slice(path.as_bytes());
             let cpath_ptr = cpath.as_ptr();
 
             //TODO test path here, as if rocksdb fails it will just crash the
@@ -324,11 +331,10 @@ impl RocksDB {
             let err = 0 as *mut i8;
             let result = rocksdb_ffi::rocksdb_destroy_db(
                 opts.inner, cpath_ptr, err);
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return Err(error_string.to_string()),
+                        return Err(error_string),
                     None =>
                         return Err(
                             "Could not initialize database.".to_string()),
@@ -345,11 +351,10 @@ impl RocksDB {
             rocksdb_ffi::rocksdb_put(self.inner, writeopts, key.as_ptr(),
                         key.len() as size_t, value.as_ptr(),
                         value.len() as size_t, err);
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return Err(error_string.to_string()),
+                        return Err(error_string),
                     None => {
                         let ie = IoError::last_error();
                         return Err(format!(
@@ -371,11 +376,10 @@ impl RocksDB {
             rocksdb_ffi::rocksdb_merge(self.inner, writeopts, key.as_ptr(),
                         key.len() as size_t, value.as_ptr(),
                         value.len() as size_t, err);
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return Err(error_string.to_string()),
+                        return Err(error_string),
                     None => {
                         let ie = IoError::last_error();
                         return Err(format!(
@@ -391,8 +395,8 @@ impl RocksDB {
     }
 
 
-    pub fn get<'a>(&self, key: &[u8]) ->
-        RocksDBResult<'a, RocksDBVector, String> {
+    pub fn get(&self, key: &[u8]) ->
+        RocksDBResult<RocksDBVector, String> {
         unsafe {
             let readopts = rocksdb_ffi::rocksdb_readoptions_create();
             let rocksdb_ffi::RocksDBReadOptions(read_opts_ptr) = readopts;
@@ -408,11 +412,10 @@ impl RocksDB {
             let err = 0 as *mut i8;
             let val = rocksdb_ffi::rocksdb_get(self.inner, readopts,
                 key.as_ptr(), key.len() as size_t, val_len_ptr, err) as *mut u8;
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return RocksDBResult::Error(error_string.to_string()),
+                        return RocksDBResult::Error(error_string),
                     None =>
                         return RocksDBResult::Error("Unable to get value from \
                             rocksdb. (non-utf8 error received from underlying \
@@ -434,11 +437,10 @@ impl RocksDB {
             let err = 0 as *mut i8;
             rocksdb_ffi::rocksdb_delete(self.inner, writeopts, key.as_ptr(),
                         key.len() as size_t, err);
-            if err.is_not_null() {
-                let cs = CString::new(err as *const i8, true);
-                match cs.as_str() {
+            if !err.is_null() {
+                match get_error_description(err) {
                     Some(error_string) =>
-                        return Err(error_string.to_string()),
+                        return Err(error_string),
                     None => {
                         let ie = IoError::last_error();
                         return Err(format!(
@@ -459,40 +461,43 @@ impl RocksDB {
 }
 
 pub struct RocksDBVector {
-    inner: CVec<u8>,
+    ptr: Unique<u8>,
+    len: usize
+}
+
+impl Drop for RocksDBVector {
+    fn drop(&mut self) {
+        unsafe { libc::free(self.ptr.0 as *mut _); }
+    }
 }
 
 impl RocksDBVector {
     pub fn from_c(val: *mut u8, val_len: size_t) -> RocksDBVector {
-        unsafe {
-            let val = Unique(val);
-            RocksDBVector {
-                inner:
-                    CVec::new_with_dtor(val.0, val_len as usize,
-                        move |:| libc::free(val.0 as *mut libc::c_void))
-            }
+        RocksDBVector {
+            ptr: Unique(val),
+            len: val_len as usize
         }
     }
 
-    pub fn as_slice<'a>(&'a self) -> &'a [u8] {
-        self.inner.as_slice()
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe { from_raw_mut_buf(&self.ptr.0, self.len) }
     }
 
     pub fn to_utf8(&self) -> Option<&str> {
-        from_utf8(self.inner.as_slice()).ok()
+        from_utf8(self.as_slice()).ok()
     }
 }
 
 // RocksDBResult exists because of the inherent difference between
 // an operational failure and the absence of a possible result.
 #[deriving(Clone, PartialEq, PartialOrd, Eq, Ord, Show)]
-pub enum RocksDBResult<'a,T,E> {
+pub enum RocksDBResult<T,E> {
     Some(T),
     None,
     Error(E),
 }
 
-impl <'a,T,E> RocksDBResult<'a,T,E> {
+impl <T,E> RocksDBResult<T,E> {
     pub fn map<U, F>(self, f: F) -> RocksDBResult<U,E>
         where F: FnOnce(T) -> U
     {
@@ -596,27 +601,28 @@ impl <'a> MergeOperands<'a> {
     }
 }
 
-impl <'a> Iterator<&'a [u8]> for &'a mut MergeOperands<'a> {
+impl <'a> Iterator for &'a mut MergeOperands<'a> {
+    type Item = &'a [u8];
+
     fn next(&mut self) -> Option<&'a [u8]> {
-        use std::raw::Slice;
-        match self.cursor == self.num_operands {
-            true => None,
-            false => {
-                unsafe {
-                    let base = self.operands_list as usize;
-                    let base_len = self.operands_list_len as usize;
-                    let spacing = mem::size_of::<*const *const u8>();
-                    let spacing_len = mem::size_of::<*const size_t>();
-                    let len_ptr = (base_len + (spacing_len * self.cursor))
-                        as *const size_t;
-                    let len = *len_ptr as usize;
-                    let ptr = base + (spacing * self.cursor);
-                    let op = from_buf_len(*(ptr as *const *const u8), len);
-                    let des: Option<usize> = from_str(op.as_slice());
-                    self.cursor += 1;
-                    Some(mem::transmute(Slice{data:*(ptr as *const *const u8)
-                        as *const u8, len: len}))
-                }
+        if self.cursor == self.num_operands {
+            None
+        }
+        else {
+            use std::raw::Slice;
+
+            unsafe {
+                let base = self.operands_list as usize;
+                let base_len = self.operands_list_len as usize;
+                let spacing = mem::size_of::<*const *const u8>();
+                let spacing_len = mem::size_of::<*const size_t>();
+                let len_ptr = (base_len + (spacing_len * self.cursor))
+                    as *const size_t;
+                let len = *len_ptr as usize;
+                let ptr = base + (spacing * self.cursor);
+                self.cursor += 1;
+                Some(mem::transmute(Slice{data:*(ptr as *const *const u8)
+                    as *const u8, len: len}))
             }
         }
     }
@@ -660,11 +666,11 @@ extern "C" fn full_merge_callback(
             &mut MergeOperands::new(operands_list,
                                     operands_list_len,
                                     num_operands);
-        let key = from_buf_len(key as *const u8, key_len as usize);
-        let oldval = from_buf_len(existing_value as *const u8,
-                                  existing_value_len as usize);
-        let mut result =
-            (cb.merge_fn)(key.as_bytes(), Some(oldval.as_bytes()), operands);
+        let mut result = (cb.merge_fn)(
+            from_raw_buf(&(key as *const u8), key_len as usize), 
+            Some(from_raw_buf(&(existing_value as *const u8), existing_value_len as usize)), 
+            operands
+            );
         result.shrink_to_fit();
         /*
         let ptr = result.as_ptr();
@@ -673,7 +679,7 @@ extern "C" fn full_merge_callback(
         */
         //TODO(tan) investigate zero-copy techniques to improve performance
         let buf = libc::malloc(result.len() as size_t);
-        assert!(buf.is_not_null());
+        assert!(!buf.is_null());
         *new_value_length = result.len() as size_t;
         *success = 1 as u8;
         ptr::copy_memory(&mut *buf, result.as_ptr()
@@ -693,12 +699,14 @@ extern "C" fn partial_merge_callback(
         let operands = &mut MergeOperands::new(operands_list,
                                                operands_list_len,
                                                num_operands);
-        let key = from_buf_len(key as *const u8, key_len as usize);
-        let mut result = (cb.merge_fn)(key.as_bytes(), None, operands);
+        let mut result = (cb.merge_fn)(
+            from_raw_buf(&(key as *const u8), key_len as usize), 
+            None, 
+            operands);
         result.shrink_to_fit();
         //TODO(tan) investigate zero-copy techniques to improve performance
         let buf = libc::malloc(result.len() as size_t);
-        assert!(buf.is_not_null());
+        assert!(!buf.is_null());
         *new_value_length = 1 as size_t;
         *success = 1 as u8;
         ptr::copy_memory(&mut *buf, result.as_ptr()
