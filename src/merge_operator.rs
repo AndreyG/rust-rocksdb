@@ -67,7 +67,7 @@ pub extern "C" fn full_merge_callback(
         assert!(!buf.is_null());
         *new_value_length = result.len() as size_t;
         *success = 1 as u8;
-        ptr::copy(&mut *buf, result.as_ptr() as *const c_void, result.len());
+        ptr::copy(result.as_ptr() as *const c_void, &mut *buf, result.len());
         buf as *const c_char
     }
 }
@@ -91,7 +91,7 @@ pub extern "C" fn partial_merge_callback(
         assert!(!buf.is_null());
         *new_value_length = 1 as size_t;
         *success = 1 as u8;
-        ptr::copy(&mut *buf, result.as_ptr() as *const c_void, result.len());
+        ptr::copy(result.as_ptr() as *const c_void, &mut *buf, result.len());
         buf as *const c_char
     }
 }
