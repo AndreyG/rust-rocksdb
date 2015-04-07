@@ -56,8 +56,8 @@ pub extern "C" fn full_merge_callback(
             &mut MergeOperands::new(operands_list,
                                     operands_list_len,
                                     num_operands);
-        let key: &[u8] = mem::transmute(slice::from_raw_buf(&raw_key, key_len as usize));
-        let oldval: &[u8] = mem::transmute(slice::from_raw_buf(&existing_value,
+        let key: &[u8] = mem::transmute(slice::from_raw_parts(&raw_key, key_len as usize));
+        let oldval: &[u8] = mem::transmute(slice::from_raw_parts(&existing_value,
                                   existing_value_len as usize));
         let mut result =
             (cb.merge_fn)(key, Some(oldval), operands);
@@ -83,7 +83,7 @@ pub extern "C" fn partial_merge_callback(
         let operands = &mut MergeOperands::new(operands_list,
                                                operands_list_len,
                                                num_operands);
-        let key: &[u8] = mem::transmute(slice::from_raw_buf(&raw_key, key_len as usize));
+        let key: &[u8] = mem::transmute(slice::from_raw_parts(&raw_key, key_len as usize));
         let mut result = (cb.merge_fn)(key, None, operands);
         result.shrink_to_fit();
         //TODO(tan) investigate zero-copy techniques to improve performance
